@@ -176,7 +176,6 @@ async function fetchMetMatches() {
 
 onMounted(fetchMetMatches)
 
-// אם עוברים למשתמש אחר (route param משתנה) – טוענים מחדש
 watch(() => route.params.id, () => fetchMetMatches())
 
 const metMatches = computed(() => allMetMatches.value)
@@ -186,7 +185,6 @@ function unmarkMet(m) {
   ids.delete(String(m.id))
   localStorage.setItem(metKey(), JSON.stringify([...ids]))
 
-  // להסיר מיד מהמסך
   allMetMatches.value = allMetMatches.value.filter(x => String(x.id) !== String(m.id))
 }
 </script>
@@ -201,7 +199,6 @@ function unmarkMet(m) {
   font-family: Arial, sans-serif;
   color: var(--h-text);
 
-  /* ✅ אותו רקע כמו LOGIN */
   background: linear-gradient(
     180deg,
     #e6f2ec 0%,
@@ -214,7 +211,7 @@ function unmarkMet(m) {
 }
 
 
-/* blobs (צבעים בלבד) */
+
 .blob { position:absolute; filter: blur(18px); opacity:.55; border-radius:999px; pointer-events:none; }
 .blob1 { width:360px; height:360px; left:-140px; top:-140px;
   background: radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--h-page-bg-mid) 55%, transparent), rgba(63,127,99,0.08));}
@@ -253,7 +250,6 @@ function unmarkMet(m) {
   padding: 18px;
   overflow:hidden;
 
-  /* ✅ כרטיס דרך טוקנים */
   background: var(--h-card-bg);
   border: 2.5px solid #2f6b4f;
 
@@ -294,7 +290,6 @@ function unmarkMet(m) {
 
 .actions{ display:flex; gap:8px; flex-wrap:wrap; }
 
-/* ✅ כפתור: “חיזוק + מסגרת ירוקה חזקה” כמו בלוגין */
 .btn{
   padding: 10px 14px;
   border-radius: 12px;
@@ -310,7 +305,7 @@ function unmarkMet(m) {
   background: rgba(233, 243, 238, 1);
 }
 
-/* outline: נשאר לבן עם מסגרת ירוקה חזקה */
+/* outline:
 /* Skip – SAME as Save (green border + light green bg) */
 .btnOutline{
   padding: 10px 14px;
@@ -333,7 +328,6 @@ function unmarkMet(m) {
   display:flex; gap:14px; align-items:center;
   padding: 18px; border-radius: 18px;
 
-  /* ✅ דרך טוקנים */
   background: var(--h-card-bg);
   border: 1px dashed var(--h-border-strong);
 
