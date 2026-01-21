@@ -1,18 +1,31 @@
+/* ==========================================================================
+   main.css
+   Purpose: Global layout and reusable UI styles for the Harmony frontend.
+   Why: Defines shared layout rules (containers, cards, buttons) so all views
+        follow the same visual structure and behavior.
+   Depends on: base.css for color tokens and theme variables.
+   ========================================================================== */
+/* Import base design tokens and theme variables */
+
 @import './base.css';
 
-/* Global app layout */
+/* Global layout variables:
+   Used for spacing, borders, and responsive container sizing across the app */
 :root {
   --container-max: 980px;
   --pad: 16px;
   --radius: 14px;
   --border: var(--h-border);
   --muted: var(--h-text-muted);
-
+  
+  /* Global background gradient for the application */
   --bg: linear-gradient(180deg, #032416 0%, #064229 55%, #078c52 100%);
 }
 
 html, body { height: 100%; }
 
+/* Base body styles:
+   Sets default font, text color, and applies the global background */
 body {
   margin: 0;
   background: var(--bg);
@@ -22,12 +35,16 @@ body {
 
 #app { min-height: 100svh; width: 100%; }
 
+/* Centered content container:
+   Limits content width and keeps consistent horizontal padding */
 .container {
   max-width: var(--container-max);
   margin: 0 auto;
   padding: 24px var(--pad);
 }
 
+/* Card component:
+   Reusable surface for content blocks (matches, profiles, sections) */
 .card {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -38,7 +55,8 @@ body {
 /* =========================
    HARMONY BUTTONS – GREEN BORDER
    ========================= */
-
+/* Buttons styling:
+   Designed to match the Harmony brand using green borders and soft backgrounds */
 .btn {
   padding: 10px 16px;
   border-radius: 14px;
@@ -64,7 +82,8 @@ body {
   transform: translateY(-1px);
 }
 
-/* כפתור "פעולה חזקה" (אם תרצי בעתיד) */
+/* Primary action button:
+   Used for main user actions (confirm, save, continue) */
 .btn.primary {
   background: var(--h-green-700);
   color: #fff;
@@ -80,6 +99,8 @@ body {
 
 button:disabled { opacity: 1; }
 
+/* Mobile responsiveness:
+   Adjusts spacing for smaller screens */
 @media (max-width: 640px) {
   .container { padding: 16px var(--pad); }
 }
