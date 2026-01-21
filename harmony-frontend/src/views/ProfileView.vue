@@ -1,3 +1,15 @@
+/**
+ * ProfileView.vue
+ * Purpose: Profile / demo screen for a participant.
+ * - Reads participant id (pid) from route params, with fallback to localStorage.
+ * - Shows basic stored info (phone/id) and attempts to load an avatar from backend.
+ *
+ * Design choices:
+ * - pid is kept in localStorage so navigation between views stays consistent after refresh.
+ * - Language selection is persisted (localStorage) and RTL is enabled for he/ar.
+ * - Avatar loading is defensive: supports multiple possible field names from backend and falls back to default image.
+ */
+
 <template>
   <div class="container">
     <div class="shell" :dir="isRtl ? 'rtl' : 'ltr'">
@@ -61,6 +73,7 @@
   </div>
 </template>
 
+
 <script setup>
 import defaultAvatar from '@/assets/default-avatar.png'
 
@@ -73,11 +86,15 @@ import { authStore } from '@/store/authStore' // אם אצלך זה ../store/aut
 
 const router = useRouter()
 const route = useRoute()
+
+  // pid comes from /profile/:id (route), fallback to localStorage.
+// We also re-save it to localStorage so it persists across refresh & navigation.
 const pid = computed(() => String(route.params.id || localStorage.getItem('harmony_pid') || '').trim())
 watch(pid, v => { if (v) localStorage.setItem('harmony_pid', v) }, { immediate: true })
 
 
-
+// Language + RTL handling:
+// Store chosen language in localStorage and update :dir to support RTL (Arabic/Hebrew).
 const LANG_KEY = 'harmony_lang'
 const lang = ref(localStorage.getItem(LANG_KEY) || 'en')
 watch(lang, v => localStorage.setItem(LANG_KEY, v), { immediate: true })
@@ -122,27 +139,35 @@ const TEXTS = {
 const t = computed(() => TEXTS[lang.value] ?? TEXTS.en)
 const isRtl = computed(() => lang.value === 'ar' || lang.value === 'he')
 
-
+// userPhone (or participant id) is stored in a tiny reactive store (authStore) after login.
+// This is used as a fallback identifier if pid is missing in the URL.
 const userPhone = computed(() => authStore?.phone || '')
+
+  // NOTE: This file currently calls the backend directly via localhost.
+// In production we should use a Vite proxy (/api/...) or environment variable for the base URL.
 const API_BASE = 'http://localhost:8000'
 const profileAvatar = ref(defaultAvatar)
 
+  // Avatar image shown in UI. Defaults to a local placeholder if backend image is missing/broken.
 function onAvatarError() {
   profileAvatar.value = defaultAvatar
 }
 
+  // Converts relative paths returned by backend into absolute URLs.
+// Supports:
+//  - full URL (http/https)
+//  - absolute path (/static/x.png)
+//  - relative path (images/x.png)
 function toAbsoluteUrl(url) {
   if (!url) return ''
-  // אם כבר URL מלא
   if (url.startsWith('http://') || url.startsWith('https://')) return url
-  // אם זה /path יחסי
   if (url.startsWith('/')) return `${API_BASE}${url}`
-  // אם זה סתם "images/x.png"
   return `${API_BASE}/${url}`
 }
 
+  // Backend response field names may vary between implementations.
+// We check common keys (imageUrl, avatar, photo, etc.) to stay robust.
 function extractAvatar(data) {
-  // מחפש בכל השמות הנפוצים שה-backend יכול להחזיר
   const raw =
     data?.image_url ||
     data?.imageUrl ||
@@ -157,6 +182,8 @@ function extractAvatar(data) {
   return toAbsoluteUrl(raw)
 }
 
+  // Fetch user profile info from backend and extract avatar URL.
+// If endpoint is not implemented yet, we gracefully fallback to default avatar.
 async function loadProfileAvatar() {
   const id = pid.value || userPhone.value
   if (!id) {
@@ -165,7 +192,6 @@ async function loadProfileAvatar() {
   }
 
   try {
-    // ⚠️ שימי לב: זה endpoint שצריך להחזיר נתוני משתמש (כולל תמונה)
     const res = await fetch(`${API_BASE}/profile/${id}`)
     if (!res.ok) throw new Error('profile endpoint failed')
 
@@ -180,15 +206,6 @@ async function loadProfileAvatar() {
 
 onMounted(loadProfileAvatar)
 watch(pid, () => loadProfileAvatar(), { immediate: true })
-
-
-
-
-
-onMounted(loadProfileAvatar)
-
-watch(pid, () => loadProfileAvatar(), { immediate: true })
-
 
 </script>
 
@@ -217,7 +234,6 @@ watch(pid, () => loadProfileAvatar(), { immediate: true })
   font-family: Arial, sans-serif;
   color: var(--h-text);
 
-  /* ✅ אותו רקע כמו LOGIN */
   background: linear-gradient(
     180deg,
     #e6f2ec 0%,
@@ -261,7 +277,7 @@ watch(pid, () => loadProfileAvatar(), { immediate: true })
 }
 
 
-/* blobs (צבעים בלבד -> tokens) */
+/* blobs  */
 .blob { position:absolute; filter: blur(18px); opacity:.55; border-radius:999px; pointer-events:none; }
 .blob1 { width:360px; height:360px; left:-140px; top:-140px;
   background: radial-gradient(circle at 30% 30%, rgba(var(--h-green-600-rgb),0.45), rgba(var(--h-green-600-rgb),0.08));}
@@ -312,7 +328,6 @@ watch(pid, () => loadProfileAvatar(), { immediate: true })
   padding: 18px;
   overflow:hidden;
 
-  /* ✅ רק צבעים: שימוש במשתנים קיימים מה-BASE */
   background: linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.52));
   border: 2.5px solid #2f6b4f;
 
