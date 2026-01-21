@@ -1,6 +1,15 @@
+/**
+ * TopNav.vue
+ * Purpose: Global top navigation component used across the app.
+ * Why: Provides consistent navigation (Matches/Profile/Met/Saved) and a mobile-friendly
+ *      hamburger drawer, while supporting RTL (Hebrew/Arabic) and LTR (English).
+ * Notes: We keep participant id (pid) in the URL and persist it in localStorage so
+ *        navigation works even after refresh.
+ */
+
 <template>
   <header class="topNav" :dir="isRtl ? 'rtl' : 'ltr'">
-    <!-- Hamburger -->
+    <!-- Hamburger button: opens the drawer menu for mobile/compact navigation -->
     <button class="menuBtn" type="button" @click="open = true" aria-label="Open menu">
       <span></span>
       <span></span>
@@ -16,7 +25,8 @@
     <div class="spacer"></div>
     
 
-    <!-- Overlay + Drawer -->
+    <!-- Overlay closes the drawer when clicking outside.
+     @click.self ensures only clicks on the overlay (not inside the drawer) close it. -->
     <div v-if="open" class="overlay" @click.self="open = false">
       <aside class="drawer" :class="{ right: isRtl }" @click.stop>
         <div class="drawerTop">
@@ -52,23 +62,31 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import logoSrc from '../assets/harmony-logo.png'
-
+  
+// Language is passed from parent views to control labels and RTL/LTR direction.
 const props = defineProps({
   lang: { type: String, default: 'en' },
 })
 
 const route = useRoute()
+  
+// Controls drawer visibility (hamburger menu).
 const open = ref(false)
 
+// RTL support: Hebrew/Arabic require right-to-left layout for correct UI alignment.
 const isRtl = computed(() => props.lang === 'he' || props.lang === 'ar')
 
+// pidStr: participant identifier used to build dynamic routes (e.g., /matches/:id).
+// Strategy: prefer URL param (source of truth). If missing, fallback to localStorage
+// to keep navigation stable after refresh or direct access from menu.
 const pidStr = computed(() => {
-  // קודם מה-URL, ואם אין – מה-localStorage
+  // First try route params, otherwise use stored pid from localStorage.
   const pid = String(route.params.id || localStorage.getItem('harmony_pid') || '').trim()
   return pid
 })
 
-// אם יש pid ב-URL – נשמור אותו תמיד
+// Persist pid whenever it appears in the URL.
+// Why: the user may reload the app or navigate via the drawer, so we cache the id.
 watch(
   () => route.params.id,
   (v) => {
@@ -78,6 +96,8 @@ watch(
   { immediate: true }
 )
 
+// Simple in-component i18n dictionary for top navigation labels.
+// Why: This component is small, so we avoid a full i18n library here for simplicity.
 const t = computed(() => {
   if (props.lang === 'he')
     return { matches: 'התאמות', profile: 'פרופיל', met: 'נפגשנו', saved: 'שמורים' }
@@ -87,7 +107,10 @@ const t = computed(() => {
 })
 </script>
 
-
+/* Styling notes:
+   - Sticky top nav keeps main actions accessible while scrolling.
+   - Drawer + overlay provide mobile-first navigation with clear focus.
+   - RTL support is handled by switching drawer side using .right class. */
 <style scoped>
 /* NAV */
 .topNav{
@@ -161,17 +184,17 @@ const t = computed(() => {
 /* spacer */
 .spacer{ width:56px; height:44px; }
 
-/* ✅ Overlay מאחורה (כהה ויפה) */
+/*  Overlay  */
 .overlay{
   position: fixed;
   inset: 0;
-  background: rgba(15, 25, 20, 0.70); /* פחות שקוף, יותר "סוגר" */
+  background: rgba(15, 25, 20, 0.70); 
   z-index: 9999;
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
 }
 
-/* ✅ Drawer עצמו (זה היה חסר אצלך!) */
+/* ✅ Drawer */
 .drawer{
   position: absolute;
   top: 0;
@@ -180,7 +203,7 @@ const t = computed(() => {
   width: min(340px, 86vw);
   height: 100vh;
 
-  /* ירוק כמו הלוגו, לא שקוף */
+  
   background: linear-gradient(180deg, #2f6b4f 0%, #3f7f63 100%);
 
   border-right: 3px solid #24513f;
@@ -210,7 +233,7 @@ const t = computed(() => {
   padding: 12px 12px;
   border-radius: 16px;
 
-  /* כרטיס ירקרק בהיר על רקע ירוק */
+  
   background: rgba(233,243,238,0.95);
   border: 2px solid #24513f;
 
@@ -253,7 +276,7 @@ const t = computed(() => {
   font-weight: 900;
 
   color: #1f3f32;
-  background: rgba(233,243,238,0.95); /* לא שקוף */
+  background: rgba(233,243,238,0.95); 
   border: 2px solid #24513f;
 
   box-shadow: 0 10px 22px rgba(31,63,50,0.14);
