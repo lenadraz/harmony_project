@@ -1,3 +1,15 @@
+/**
+ * SavedView.vue
+ * Purpose: Displays the list of profiles the participant marked as "Saved".
+ * How it works:
+ * - Saved items are stored locally per participant (localStorage key harmony_saved_<pid>).
+ * - On load, we fetch the matches list from the backend and filter it by the saved IDs set.
+ * Design choices:
+ * - We reuse the same /api/match/:pid endpoint (single source of match data) instead of storing full profiles in localStorage.
+ * - Saved state is per participant (pid) so different users don't see each other's saved list.
+ * - Language selection + RTL are persisted using localStorage for consistent UX across views.
+ */
+
 <template>
   <div class="container">
     <div class="shell" :dir="isRtl ? 'rtl' : 'ltr'">
@@ -7,6 +19,7 @@
       <div class="blob blob3" aria-hidden="true"></div>
 
       <div class="page">
+        <!-- Shared top navigation; we pass the current language and participantId so links keep the same user context -->
         <TopNav :lang="lang" :pid="participantId()" />
 
 
@@ -26,7 +39,8 @@
             </select>
           </div>
         </div>
-
+        
+        <!-- Empty state: shown when the user has not saved any profiles yet -->
         <div v-if="savedMatches.length === 0" class="empty">
           <div class="emptyIcon" aria-hidden="true">⭐</div>
           <div class="emptyText">
@@ -35,6 +49,7 @@
           </div>
         </div>
 
+        <!-- Saved list: we render only the matches that appear in localStorage saved IDs -->
         <div v-else class="list">
           <div v-for="m in savedMatches" :key="m.id" class="card">
             <div class="cardGlow" aria-hidden="true"></div>
@@ -71,10 +86,12 @@
 import { computed, ref, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import TopNav from '@/components/TopNav.vue'
-
+  
+// Read participant id from route params (/saved/:id) to load user-specific saved data.
 const route = useRoute()
 
-/* ===== Language ===== */
+// Language + RTL:
+// Store chosen language in localStorage and switch direction (dir) for Arabic/Hebrew.
 const LANG_KEY = 'harmony_lang'
 const lang = ref(localStorage.getItem(LANG_KEY) || 'en')
 watch(lang, v => localStorage.setItem(LANG_KEY, v), { immediate: true })
@@ -109,6 +126,8 @@ const TEXTS = {
 const t = computed(() => TEXTS[lang.value] ?? TEXTS.en)
 const isRtl = computed(() => lang.value === 'ar' || lang.value === 'he')
 
+  // Helper for multilingual fields:
+// If the backend returns an object (e.g., {en, he, ar}) we pick by current lang with fallbacks.
 function pick(field) {
   if (!field) return ''
   if (typeof field === 'string') return field
@@ -116,14 +135,17 @@ function pick(field) {
 }
 
 /* ===== Per participant keys ===== */
+  // Current participant identifier used to scope localStorage keys (so saved list is per-user).
 function participantId() {
   return String(route.params.id || '').trim()
 }
 
+  // localStorage key format: harmony_saved_<pid> (stores an array of saved match IDs).
 function savedKey() {
   return `harmony_saved_${participantId()}`
 }
 
+  // Load saved IDs safely (JSON parse guarded) and return as a Set for fast lookup/filtering.
 function loadSavedIds() {
   try {
     return new Set(JSON.parse(localStorage.getItem(savedKey()) || '[]').map(String))
@@ -144,6 +166,8 @@ function normalizeResponse(data) {
   return []
 }
 
+  // Fetch all matches from backend, then filter to only the ones saved by this participant.
+// This avoids duplicating match details in localStorage (we only store IDs).
 async function fetchSavedMatches() {
   const pid = participantId()
   if (!pid) {
@@ -167,7 +191,8 @@ async function fetchSavedMatches() {
         whyMatched: r?.reason ?? '',
         avatar: r?.imageUrl || placeholderAvatar,
       }))
-      .filter(m => savedIds.has(String(m.id)))
+      .filter(m => savedIds.has(String(m.id)))  // Keep only matches whose id exists in the saved IDs set.
+
   } catch {
     allSavedMatches.value = []
   }
@@ -178,6 +203,9 @@ watch(() => route.params.id, () => fetchSavedMatches())
 
 const savedMatches = computed(() => allSavedMatches.value)
 
+  // Remove a match from Saved:
+// - update localStorage saved IDs
+// - update UI list immediately (optimistic update) without refetching from backend
 function unsave(m) {
   const ids = loadSavedIds()
   ids.delete(String(m.id))
@@ -196,7 +224,6 @@ function unsave(m) {
   font-family: Arial, sans-serif;
   color: var(--h-text);
 
-  /* ✅ אותו רקע כמו LOGIN */
   background: linear-gradient(
     180deg,
     #e6f2ec 0%,
@@ -209,7 +236,7 @@ function unsave(m) {
 }
 
 
-/* blobs (צבעים בלבד) */
+/* blobs */
 .blob { position:absolute; filter: blur(18px); opacity:.55; border-radius:999px; pointer-events:none; }
 .blob1 { width:360px; height:360px; left:-140px; top:-140px;
   background: radial-gradient(circle at 30% 30%, rgba(63,127,99,0.45), rgba(63,127,99,0.08));}
@@ -248,7 +275,6 @@ function unsave(m) {
   padding: 18px;
   overflow:hidden;
 
-  /* ✅ רק צבעים: משתמשים בטוקנים מה-BASE */
   background: var(--h-card-bg);
   border: 2.5px solid #2f6b4f;
 
@@ -324,7 +350,6 @@ function unsave(m) {
   display:flex; gap:14px; align-items:center;
   padding: 18px; border-radius: 18px;
 
-  /* ✅ רק צבעים: כמו card */
   background: var(--h-card-bg);
   border: 1px dashed var(--h-border-strong);
 
