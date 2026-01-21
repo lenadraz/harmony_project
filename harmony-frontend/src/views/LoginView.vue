@@ -1,5 +1,9 @@
+
 <template>
   <div class="container">
+
+    <!-- Login page wrapper:
+     Uses :dir to switch between RTL (he/ar) and LTR (en) layouts -->
     <div class="loginPage" :dir="isRtl ? 'rtl' : 'ltr'">
       <div class="loginCard">
         <!-- BRAND -->
@@ -10,7 +14,8 @@
 
         <p class="subtitle">{{ t.subtitle }}</p>
 
-        <!-- LANGUAGE -->
+        <!-- Language selector:
+     Saves user preference to localStorage to persist across refreshes -->
         <label class="label">{{ t.language }}</label>
         <div class="field">
           <select class="input selectInput" v-model="lang">
@@ -21,7 +26,8 @@
           <span class="arrow">▾</span>
         </div>
 
-        <!-- PHONE / ID -->
+        <!-- Participant identifier input:
+     Input is numeric-only (inputmode="numeric") and validated before enabling Continue -->
         <label class="label">{{ t.phone }}</label>
         <div class="field">
           <input
@@ -41,6 +47,9 @@
         </p>
 
         <!-- BUTTONS -->
+        <!-- Actions:
+     Continue -> go to Matches with pid
+     New participant -> go directly to Profile flow with pid -->
         <div class="btnBar">
           <button type="button" class="primaryBtn" :disabled="!isIdValid" @click="continueLogin">
             {{ t.continue }}
@@ -55,22 +64,35 @@
   </div>
 </template>
 
+/**
+ * LoginView.vue
+ * Purpose: Entry screen for the Harmony app (participant login).
+ * Key features:
+ *  - Multi-language UI (EN/HE/AR) with RTL support.
+ *  - Validates participant id input and persists it for routing.
+ *  - Stores session state in a small global store + localStorage for refresh support.
+ * Design choice: pid is saved in localStorage and used by the router to prevent broken routes.
+ */
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { authStore } from '@/store/authStore'
 
+// Vue Router is used for programmatic navigation after login.
 const router = useRouter()
 
-// כרגע נשאיר את השם phone כדי לא לשבור לך CSS.
-// אבל בפועל – אנחנו משתמשים בזה בתור "participant id" בשביל הבדיקה.
+// We keep the variable name "phone" for backward compatibility with the UI/CSS,
+// but it represents the participant id used for routing and backend requests.
 const phone = ref('')
 const phoneTouched = ref(false)
 
+  // Persist language preference so the UI keeps the same language after reload.
 const LANG_KEY = 'harmony_lang'
 const lang = ref(localStorage.getItem(LANG_KEY) || 'en')
 watch(lang, v => localStorage.setItem(LANG_KEY, v), { immediate: true })
 
+  // In-component translation dictionary for a small number of UI strings.
+// (Avoids adding a full i18n library for this prototype.)
 const TEXTS = {
   en: {
     language: 'Language',
@@ -98,18 +120,24 @@ const TEXTS = {
 }
 
 const t = computed(() => TEXTS[lang.value] ?? TEXTS.en)
+  
+  // RTL layout for Hebrew/Arabic to ensure correct reading direction and alignment.
 const isRtl = computed(() => lang.value === 'ar' || lang.value === 'he')
 
-// מוציא רק ספרות (כדי שאם כתבו רווח/תו זה לא יפיל)
+// Normalization step:
+// Extract digits only to avoid issues with spaces or non-numeric characters.
+// This makes input robust for real users on mobile keyboards.
 function normalizeId(raw) {
   const s = (raw || '').trim()
   const digitsOnly = s.replace(/[^\d]/g, '')
   return digitsOnly
 }
 
+  // Validation rule:
+// Accepts numeric ids (including ids that may start with 0).
+// The Continue button stays disabled until the input is valid.
 function isValidId(raw) {
   const id = normalizeId(raw)
-  // מאפשר גם מספר שמתחיל ב-0 (טלפון)
   return /^\d+$/.test(id)
 }
 
@@ -120,6 +148,11 @@ function onPhoneInput() {
   phoneTouched.value = true
 }
 
+  // Main login flow:
+// 1) Validate id
+// 2) Save to authStore (reactive state)
+// 3) Save to localStorage ("harmony_pid") so routing survives refresh
+// 4) Navigate to Matches page with pid in the URL
 function continueLogin() {
   if (!isIdValid.value) return
   const id = normalizeId(phone.value)
@@ -132,7 +165,8 @@ function continueLogin() {
   router.push(`/matches/${id}`)
 }
 
-
+// New participant flow:
+// Skips Matches and navigates directly to Profile creation/view for the given id.
 function newParticipant() {
   const id = normalizeId(phone.value)
   if (!id) return
@@ -147,10 +181,14 @@ function newParticipant() {
 
 </script>
 
+/* Styling notes:
+   - Green "glass" card matches Harmony branding (logo colors).
+   - Sticky button bar keeps actions visible on small screens.
+   - Responsive tweaks for mobile ensure the login card fits without overflow. */
 <style scoped>
 .container { width: 100%; max-width: none; padding: 0; margin: 0; }
 
-/* ===== PAGE BG (ירוק מחוזק כמו שביקשת) ===== */
+/* ===== PAGE BG  */
 .loginPage{
   min-height: 100svh;
   display: grid;
@@ -168,20 +206,20 @@ function newParticipant() {
   );
 }
 
-/* ===== CARD (מסגרת ירוקה + glass ירקרק) ===== */
+/* CARD  */
 .loginCard{
   width: min(520px, 92vw);
   padding: 26px 22px;
   border-radius: 26px;
 
-  /* glass ירקרק (לא לבן מדי) */
+  /* glass  */
   background: linear-gradient(
     180deg,
     rgba(233,243,238,0.92),
     rgba(255,255,255,0.80)
   );
 
-  /* מסגרת ירוקה כמו בלוגו */
+  
   border: 2.5px solid #2f6b4f;
 
   box-shadow:
@@ -221,7 +259,7 @@ function newParticipant() {
   height: 52px;
   box-sizing: border-box;
 
-  /* מסגרת ירקרקה עדינה */
+  
   border: 2px solid rgba(47,107,79,0.25);
   background: rgba(255,255,255,0.94);
   color: var(--h-text);
@@ -240,7 +278,7 @@ function newParticipant() {
 }
 
 .selectInput{
-  padding-right: 44px; /* נשאיר מקום לחץ שלך */
+  padding-right: 44px; 
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
@@ -263,6 +301,8 @@ function newParticipant() {
 }
 
 /* ===== BUTTONS BAR ===== */
+  /* Sticky action bar:
+   Keeps Continue/New Participant buttons accessible even when content scrolls */
 .btnBar{
   position: sticky;
   bottom: 0;
@@ -283,7 +323,7 @@ function newParticipant() {
   -webkit-backdrop-filter: blur(10px);
 }
 
-/* ===== BUTTONS (מסגרת ירוקה כמו Matches) ===== */
+/* BUTTONS */
 .primaryBtn,
 .secondaryBtn{
   width: 100%;
@@ -301,12 +341,12 @@ function newParticipant() {
 }
 
 .primaryBtn{
-  /* Continue קצת יותר "premium" */
+  /* Continue */
   background: linear-gradient(135deg, rgba(233,243,238,0.98), rgba(206,232,221,0.98));
 }
 
 .secondaryBtn{
-  /* New participant — אותו סגנון, קצת יותר לבן */
+  /* New participant */
   background: rgba(233,243,238,0.88);
 }
 
