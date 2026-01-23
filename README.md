@@ -2,7 +2,6 @@
 
 Harmony is an intelligent multi-language networking and matching system designed to connect participants based on shared interests, background, and preferences.  
 The system combines a modern frontend interface with a machine-learning–based backend that generates personalized match recommendations and explanatory insights.  
-Harmony supports English, Hebrew, and Arabic, and was developed as part of an academic final project with an emphasis on usability, scalability, and intelligent decision-making.
 
 ## Project Structure
 
