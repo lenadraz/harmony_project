@@ -1,0 +1,6 @@
+- **data/** – Contains datasets and cached artifacts used by the backend:
+  - **participants.csv** – Raw participants dataset (original input data).
+  - **participants_clean.csv** – Cleaned/processed version of the participants data used for matching.
+  - **field_embeddings.csv** – Precomputed embeddings for every field to speed up similarity calculations.
+  - **with_embeddings.csv** – Participants' data enriched with computed embeddings used during matching.
+  - **llm_explanations_cache.json** – Cache of generated LLM-based explanations to avoid repeated requests and improve performance.
