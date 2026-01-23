@@ -1,0 +1,5 @@
+## Components
+
+This directory contains reusable Vue components shared across multiple views in the Harmony frontend.
+
+- **TopNav.vue** – Implements the top navigation bar of the application, providing access to main sections, language switching, and basic navigation controls.
