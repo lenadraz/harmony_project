@@ -283,14 +283,23 @@ app.get('/api/match/:id', async (req, res) => {
       matches.map(async (m) => {
         const exp = await explainPair(targetId, m.id);
 
-        return {
+                return {
           id: m.id,
           name: m.name,
           score: m.score,
           breakdown: m.breakdown,
-          reason: exp.llmExplanation,
+
+          reason: exp.explanation?.ar || null,
+          reason_en: exp.explanation?.en || null,
+          reason_he: exp.explanation?.he || null,
+
+          // 🔹 חדש – שם מתורגם בנפרד
+          match_name: exp.match_name || null,
+
+
           imageUrl: imagesById.get(String(m.id)) || null
         };
+
       })
     );
 
