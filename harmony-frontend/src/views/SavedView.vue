@@ -2,7 +2,7 @@
  * SavedView.vue
  * Purpose: Displays the list of profiles the participant marked as "Saved".
  * How it works:
- * - Saved items are stored locally per participant (localStorage key harmony_saved_<pid>).
+ * - Saved items are stored locally per participant (localStorage key harmony_saved).
  * - On load, we fetch the matches list from the backend and filter it by the saved IDs set.
  * Design choices:
  * - We reuse the same /api/match/:pid endpoint (single source of match data) instead of storing full profiles in localStorage.
