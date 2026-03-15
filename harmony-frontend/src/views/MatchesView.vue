@@ -1,5 +1,25 @@
+/**
+ * MatchesView.vue
+ * Purpose:
+ *  - Displays match recommendations for a specific participant (pid from route params).
+ *
+ * Data flow:
+ *  1) Read participant id (pid) from the URL: /matches/:id
+ *  2) Fetch matches from backend proxy endpoint: /api/match/:pid
+ *  3) Normalize response shape (array or {matches: []})
+ *  4) Map backend objects -> UI cards (score -> percent, reason fields, avatar)
+ *  5) Apply client-side user actions:
+ *      - Save / Met: persisted in localStorage per participant
+ *      - Skip: removed only from current screen (not persisted)
+ *
+ * Why localStorage?
+ *  - Simple state persistence without backend write endpoints.
+ *  - "Per participant" keys prevent mixing saved/met lists between users.
+ */
+
 <template>
   <div class="container">
+        <!-- dir controls RTL/LTR for Hebrew/Arabic -->
     <div class="shell" :dir="isRtl ? 'rtl' : 'ltr'">
       <!-- background decorations -->
       <div class="blob blob1" aria-hidden="true"></div>
@@ -7,9 +27,10 @@
       <div class="blob blob3" aria-hidden="true"></div>
 
       <div class="page">
-        <!-- אם TopNav אצלך תקין, תשאירי. אם זה גורם לקריסה, תמחקי את השורה הזו -->
+                <!-- Top navigation (hamburger + logo) -->
         <TopNav :lang="lang" />
-
+        
+        <!-- Header title + language selector -->
         <div class="headerRow">
           <div class="titles">
             <h1 class="h1">{{ t.title }}</h1>
@@ -17,6 +38,8 @@
           </div>
 
           <div class="langBox">
+
+            <!-- Language selection is persisted in localStorage -->
             <span class="langIcon" aria-hidden="true">🌐</span>
             <select class="langSelect" v-model="lang">
               <option value="en">English</option>
@@ -34,7 +57,8 @@
             <div class="emptySub">{{ t.loadingSub }}</div>
           </div>
         </div>
-
+        
+        <!-- ERROR STATE -->
         <div v-else-if="errorMsg" class="empty">
           <div class="emptyIcon" aria-hidden="true">⚠️</div>
           <div class="emptyText">
@@ -65,19 +89,22 @@
             <div v-if="idx === 0" class="bestBadge">
               {{ t.bestMatch }}
             </div>
-
+            
+            <!-- Card header: info + avatar -->
             <div class="cardHeader">
               <div class="info">
-                <!-- ✅ שינוי: במקום m.name -->
+                <!-- Name can be multilingual object or simple string -->
                 <div class="name">{{ getName(m) }}</div>
 
                 <div class="role">{{ m.role }}</div>
-
+                
+                <!-- Match percentage derived from score -->
                 <div class="matchPercent ltrNum">
                   {{ m.matchPercent }}% {{ t.matchSuffix }}
                 </div>
               </div>
-
+              
+              <!-- Avatar image fallback to placeholder on error -->
               <img
                 class="avatar"
                 :src="m.avatar"
@@ -87,9 +114,9 @@
               />
             </div>
 
+             <!-- Explanation (Why matched) - language-aware -->
             <div class="why">
               <strong>{{ t.why }}</strong>
-              <!-- ✅ כבר אצלך: שינוי יחיד בטמפלייט: במקום m.whyMatched -->
               {{ getWhy(m) }}
             </div>
 
@@ -107,12 +134,14 @@
                 {{ m.met ? t.unmetBtn : t.metBtn }}
               </button>
 
+              <!-- Skip removes from UI list only (not saved to storage) -->
               <button class="btn btnOutline" @click="skip(m)">
                 {{ t.skip }}
               </button>
             </div>
           </div>
-
+          
+          <!-- Manual refresh (re-fetch from backend) -->
           <div class="refreshRow">
             <button class="btn" @click="fetchMatches()">{{ t.refresh }}</button>
           </div>
@@ -126,26 +155,24 @@
 import { computed, ref, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import TopNav from '@/components/TopNav.vue'
-
+  
+/**
+ * Route is used to read participant id from /matches/:id
+ */
 const route = useRoute()
 
-/* ===== Language ===== */
-const LANG_KEY = 'harmony_lang'
+/* =========================
+   Language handling
+   - stored in localStorage so it persists between refreshes
+   - also controls RTL layout and UI strings
+   ========================= */const LANG_KEY = 'harmony_lang'
 const lang = ref(localStorage.getItem(LANG_KEY) || 'en')
-watch(
-  lang,
-  (v, prev) => {
-    localStorage.setItem(LANG_KEY, v)
-
-    // ✅ אם השפה השתנתה בפועל — רענני נתונים כדי לקבל reason בשפה החדשה
-    if (v !== prev) {
-      fetchMatches()
-    }
-  },
-  { immediate: true }
-)
-
-
+watch(lang, v => localStorage.setItem(LANG_KEY, v), { immediate: true })
+  
+/**
+ * UI translations for this screen only.
+ * (Project is kept simple: no i18n library, just computed dictionary.)
+ */
 const TEXTS = {
   en: {
     title: 'Matches',
@@ -216,13 +243,25 @@ const isRtl = computed(() => lang.value === 'ar' || lang.value === 'he')
 const loading = ref(false)
 const errorMsg = ref('')
 const matches = ref([])
-
+  
+  /**
+ * Default avatar used when backend has no imageUrl or loading fails.
+ */
 import defaultAvatar from '@/assets/default-avatar.png'
 const placeholderAvatar = defaultAvatar
 
+  /**
+ * Participant id is read from the route param.
+ * We keep it as a function so keys always use the current route.
+ */
 function participantId() {
   return String(route.params.id || '').trim()
 }
+
+  /**
+ * Per-user storage keys:
+ * Each participant has their own saved/met list.
+ */
 function savedKey() {
   return `harmony_saved_${participantId()}`
 }
@@ -230,6 +269,10 @@ function metKey() {
   return `harmony_met_${participantId()}`
 }
 
+  /**
+ * loadSet/saveSet:
+ * store array in localStorage -> use Set in runtime for fast membership checks
+ */
 function loadSet(key) {
   try {
     const arr = JSON.parse(localStorage.getItem(key) || '[]')
@@ -243,6 +286,10 @@ function saveSet(key, setObj) {
   localStorage.setItem(key, JSON.stringify([...setObj]))
 }
 
+  /**
+ * Adds UI flags (saved/met) to each card based on localStorage.
+ * This keeps UI in sync after refresh.
+ */
 function applySavedMetFlags(list) {
   const saved = loadSet(savedKey())
   const met = loadSet(metKey())
@@ -254,13 +301,18 @@ function applySavedMetFlags(list) {
   }))
 }
 
+  /**
+ * Backend may return:
+ *  - array directly
+ *  - or { matches: [...] }
+ * Normalize to always return an array.
+ */
 function normalizeResponse(data) {
   if (Array.isArray(data)) return data
   if (data && Array.isArray(data.matches)) return data.matches
   return []
 }
 
-/* ✅ חדש: פונקציה שמחזירה reason לפי השפה (נשאר כמו אצלך – גם אם לא בשימוש) */
 function pickReasonByLang(raw) {
   const ar = raw?.reason ?? ''
   const en = raw?.reason_en ?? ''
@@ -271,7 +323,11 @@ function pickReasonByLang(raw) {
   return ar || en || he || ''
 }
 
-/* ✅ פונקציה ל-Why בהתאם לשפה */
+  /**
+ * getWhy/getName:
+ * reason/name can arrive in multiple languages.
+ * We pick the best field according to current UI language.
+ */
 function getWhy(m) {
   if (!m) return ''
   if (lang.value === 'en') return m.whyMatched_en || m.whyMatched || m.whyMatched_he || ''
@@ -279,7 +335,6 @@ function getWhy(m) {
   return m.whyMatched || m.whyMatched_en || m.whyMatched_he || ''
 }
 
-/* ✅ חדש: פונקציה לשם בהתאם לשפה (לפי match_name מה-backend) */
 function getName(m) {
   if (!m) return ''
 
@@ -293,6 +348,12 @@ function getName(m) {
   return original || en || he || ''
 }
 
+  /**
+ * Convert backend match object -> UI object.
+ * - score (0..1) -> percent
+ * - copy multilingual reason fields
+ * - fallback avatar if missing
+ */
 function toUiMatch(raw) {
   const score = Number(raw?.score)
   const matchPercent = Number.isFinite(score) ? Math.round(score * 100) : 0
@@ -302,13 +363,12 @@ function toUiMatch(raw) {
 
     name: raw?.name ?? '',
 
-    // ✅ הוספה בלבד: שומר את match_name שמגיע מה-API
     match_name: raw?.match_name ?? null,
 
-    role: '', // לא מגיע מה-API כרגע
+    role: '', 
     matchPercent,
 
-    // ✅ שמירה של כל השפות ל-why
+        // reasons in multiple languages if provided by backend
     whyMatched: raw?.reason ?? '',
     whyMatched_en: raw?.reason_en ?? '',
     whyMatched_he: raw?.reason_he ?? '',
@@ -320,6 +380,10 @@ function toUiMatch(raw) {
   }
 }
 
+  /**
+ * Fetch matches for current participant.
+ * Uses frontend proxy: /api/match/:pid (configured in Vite to forward to backend).
+ */
 async function fetchMatches() {
   const pid = participantId()
   if (!pid) return
@@ -328,14 +392,12 @@ async function fetchMatches() {
   errorMsg.value = ''
 
   try {
-    // ✅ עם proxy:
     const res = await fetch(`/api/match/${pid}`)
     if (!res.ok) throw new Error(`API error: ${res.status}`)
     const data = await res.json()
 
     const rawMatches = normalizeResponse(data)
 
-    // ✅ אותו דבר שלך, רק הוספתי applySavedMetFlags (היה אצלך אבל לא השתמשת)
     matches.value = applySavedMetFlags(rawMatches.map(toUiMatch))
   } catch (e) {
     errorMsg.value = e?.message || 'Failed to fetch'
@@ -345,6 +407,9 @@ async function fetchMatches() {
   }
 }
 
+  /**
+ * Run fetch on first mount and whenever route id changes.
+ */
 onMounted(fetchMatches)
 
 watch(
@@ -352,10 +417,17 @@ watch(
   () => fetchMatches()
 )
 
+  /**
+ * Always present top match first.
+ */
 const sortedMatches = computed(() =>
   [...matches.value].sort((a, b) => (b.matchPercent ?? 0) - (a.matchPercent ?? 0))
 )
 
+  /**
+ * Save/Unsave:
+ * toggle ID in localStorage set and update UI immediately.
+ */
 function save(m) {
   const key = savedKey()
   const setObj = loadSet(key)
@@ -371,6 +443,10 @@ function save(m) {
   saveSet(key, setObj)
 }
 
+  /**
+ * Met/Unmet:
+ * toggle ID in localStorage set and update UI immediately.
+ */
 function markMet(m) {
   const key = metKey()
   const setObj = loadSet(key)
@@ -386,17 +462,25 @@ function markMet(m) {
   saveSet(key, setObj)
 }
 
+  /**
+ * Skip:
+ * remove item from the current list only.
+ * (Not persisted because skipping behavior may change in future requirements.)
+ */
 function skip(m) {
   matches.value = matches.value.filter(x => x.id !== m.id)
 }
 
+  /**
+ * If avatar URL fails to load, fallback to placeholder image.
+ */
 function onAvatarError(e) {
   e.target.src = placeholderAvatar
 }
 </script>
 
 <style scoped>
-/* זה ה-CSS שלך 그대로 (רק הוספתי refreshRow). */
+  /* UI styles only (no logic). Keeping the design consistent with Harmony green theme. */
 .container { width: 100%; padding: 0; margin: 0; }
 
 .shell {
@@ -409,6 +493,7 @@ function onAvatarError(e) {
   overflow: hidden;
 }
 
+  /* Decorative blobs for depth */
 .blob { position:absolute; filter: blur(18px); opacity:.55; border-radius:999px; pointer-events:none; }
 .blob1 { width:360px; height:360px; left:-140px; top:-140px;
   background: radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--h-page-bg-mid) 55%, transparent), rgba(63,127,99,0.08));}
@@ -469,8 +554,8 @@ function onAvatarError(e) {
 /* ⭐ BEST MATCH – fixed top corner, no overlap, no height change */
 .bestBadge{
   position: absolute;
-  top: 8px;          /* בתוך הכרטיס, לא שלילי */
-  right: 12px;       /* פינה ימנית */
+  top: 8px;          
+  right: 12px;       
   left: auto;
 
   padding: 6px 14px;
@@ -487,7 +572,7 @@ function onAvatarError(e) {
   box-shadow: 0 10px 28px rgba(31,63,50,0.28);
 
   z-index: 5;
-  white-space: nowrap;   /* מונע שבירת טקסט */
+  white-space: nowrap;   
   max-width: 90%; 
 }
 
