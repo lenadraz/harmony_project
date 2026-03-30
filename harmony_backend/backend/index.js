@@ -1,3 +1,13 @@
+const { CosmosClient } = require("@azure/cosmos");
+
+
+const key = process.env.COSMOS_KEY; //from cosmos
+const endpoint = process.env.COSMOS_ENDPOINT;
+
+const client = new CosmosClient({ endpoint, key });
+const database = client.database("harmony-db");
+const container = database.container("participants");
+
 const express = require('express');
 const app = express();
 const fs = require('fs');
@@ -15,42 +25,6 @@ console.log("RUNNING THIS INDEX:new");
    ========================================================= */
 const imagesById = new Map();
 
-function loadImagesFromParticipantsCsv() {
-  return new Promise((resolve, reject) => {
-    let index = 0;
-
-    fs.createReadStream('data/participants.csv', { encoding: 'utf8' })
-      .pipe(csv())
-      .on('data', (row) => {
-        if (index === 0) {
-  console.log('CSV columns:', Object.keys(row));
-}
-
-        // same row-based id logic used in /api/participants
-        const id = String(index++).trim();
-
-        // ⚠️ Update column name if needed
-        const imageUrl = String(
-            row[''] ||                
-          row['imageUrl'] ||
-          row['image_url'] ||
-          row['image'] ||
-          row['photo'] ||
-          row['avatar'] ||
-          row['תמונה'] ||
-          row['קישור לתמונה'] ||
-          ''
-        ).trim();
-
-        if (imageUrl) imagesById.set(id, imageUrl);
-      })
-      .on('end', () => {
-        console.log(`✅ Loaded ${imagesById.size} participant images`);
-        resolve();
-      })
-      .on('error', reject);
-  });
-}
 
 /* ---------- EMBEDDING CLIENT ---------- */
 
@@ -121,204 +95,127 @@ function removeStopwords(text) {
 }
 
 /* ---------- SAVE CLEAN CSV (BEFORE EMBEDDINGS) ---------- */
-function saveCleanParticipantsCSV(participants) { // Export cleaned text for QA/debug
+function saveCleanParticipantsCSV(participants) {
   if (!fs.existsSync('data')) fs.mkdirSync('data', { recursive: true });
 
-  const header = [
-    'id',
-    'name',
-    'jobTitle_clean',
-    'academic_clean',
-    'professional_clean',
-    'personal_clean'
-  ].join(',') + '\n';
+  const header = 'id,name,jobTitle_clean,academic_clean,professional_clean,personal_clean\n';
 
-  const lines = participants.map(p => {
-    const safeName = String(p.name || '').replace(/"/g, '""');
-    const jt = String(p.jobTitleText || '').replace(/"/g, '""');
-    const ac = String(p.academicText || '').replace(/"/g, '""');
-    const pr = String(p.professionalText || '').replace(/"/g, '""');
-    const pe = String(p.personalText || '').replace(/"/g, '""');
+  const rows = participants.map(p =>
+    `${p.id},"${p.name}","${p.jobTitleText}","${p.academicText}","${p.professionalText}","${p.personalText}"`
+  );
 
-    return `${p.id},"${safeName}","${jt}","${ac}","${pr}","${pe}"`;
-  });
-
-  fs.writeFileSync('data/participants_clean.csv', header + lines.join('\n'), 'utf8');
+  fs.writeFileSync('data/participants_clean.csv', header + rows.join('\n'), 'utf8');
 }
+
 
 /* ---------- SAVE FIELD EMBEDDINGS (SEPARATE) ---------- */
 function saveFieldEmbeddingsToCSV(participants) {
   const header = 'id,name,jobTitle_embedding,academic_embedding,professional_embedding,personal_embedding,profile_embedding\n';
 
-  const rows = participants.map(p => {
-    const safeName = String(p.name || '').replace(/"/g, '""');
-    const jt = JSON.stringify(p.jobTitle_embedding || []).replace(/"/g, '""');
-    const ac = JSON.stringify(p.academic_embedding || []).replace(/"/g, '""');
-    const pr = JSON.stringify(p.professional_embedding || []).replace(/"/g, '""');
-    const pe = JSON.stringify(p.personal_embedding || []).replace(/"/g, '""');
-    const glob = JSON.stringify(p.profile_embedding || []).replace(/"/g, '""');
-
-    return `${p.id},"${safeName}","${jt}","${ac}","${pr}","${pe}","${glob}"`;
-  });
-
-  const content = header + rows.join('\n');
-
-  fs.writeFileSync(
-    'data/field_embeddings.csv',
-    content,
-    { encoding: 'utf8', flag: 'w' }
+  const rows = participants.map(p =>
+    `${p.id},"${p.name}","${JSON.stringify(p.jobTitle_embedding)}","${JSON.stringify(p.academic_embedding)}","${JSON.stringify(p.professional_embedding)}","${JSON.stringify(p.personal_embedding)}","${JSON.stringify(p.profile_embedding)}"`
   );
+
+  fs.writeFileSync('data/field_embeddings.csv', header + rows.join('\n'), 'utf8');
 }
 
 /* ---------- ROUTES ---------- */
 // Health check route
+
 app.get('/', (req, res) => {
   res.send('Backend is running');
 });
 
-// Reads participants from CSV, builds profile text, computes embeddings, saves them, and returns the result
+/* ✅ NOW USING COSMOS DB */
 app.get('/api/participants', async (req, res) => {
-  const results = [];
-  let index = 0;
+  try {
+    const { resources } = await container.items.readAll().fetchAll();
 
-  fs.createReadStream('data/participants.csv', { encoding: 'utf8' })
-    .pipe(csv())
-    .on('data', (row) => {
-      const cleanedJob  = removeStopwords(normalizeText(row['Job Title']));
-      const cleanedAcad = removeStopwords(normalizeText(row['Academic Resume']));
-      const cleanedProf = removeStopwords(normalizeText(row['Professional Resume']));
-      const cleanedPers = removeStopwords(normalizeText(row['Personal Resume']));
+    const results = resources.map((row, index) => {
+      const cleanedJob  = removeStopwords(normalizeText(row.job));
+      const cleanedAcad = removeStopwords(normalizeText(row.academic));
+      const cleanedProf = removeStopwords(normalizeText(row.professional));
+      const cleanedPers = removeStopwords(normalizeText(row.personal));
 
-      results.push({
-        id: index++, // Stable row-based ID
-        name: row['الاسم'] || '',
+      return {
+        id: index,
+        name: row.name || '',
         jobTitleText: cleanedJob,
         academicText: cleanedAcad,
         professionalText: cleanedProf,
         personalText: cleanedPers,
 
-        // global profile text
         profileText: [
           cleanedAcad,
           cleanedProf,
           cleanedPers
         ].filter(Boolean).join(' ')
-      });
-    })
-    .on('end', async () => {
-      try {
-        // Save cleaned CSV BEFORE embeddings
-        saveCleanParticipantsCSV(results);
-
-        // Prepare texts
-        const jobTexts          = results.map(p => p.jobTitleText);
-        const academicTexts     = results.map(p => p.academicText);
-        const professionalTexts = results.map(p => p.professionalText);
-        const personalTexts     = results.map(p => p.personalText);
-        const profileTexts      = results.map(p => p.profileText);
-
-        // One embedding call for all fields + global
-        const allFieldTexts = [
-          ...jobTexts,
-          ...academicTexts,
-          ...professionalTexts,
-          ...personalTexts,
-          ...profileTexts
-        ].map(t => (t && t.trim()) ? t : ' ');
-
-        console.log("ABOUT TO CALL EMBEDDINGS:", allFieldTexts.length);
-        const allFieldEmbeddings = await getEmbeddingsBatched(allFieldTexts, 40);
-
-        console.log("EMBEDDINGS RETURNED");
-
-        // Split embeddings
-        const n = results.length;
-        const jobEmb  = allFieldEmbeddings.slice(0, n);
-        const acadEmb = allFieldEmbeddings.slice(n, 2 * n);
-        const profEmb = allFieldEmbeddings.slice(2 * n, 3 * n);
-        const persEmb = allFieldEmbeddings.slice(3 * n, 4 * n);
-        const globEmb = allFieldEmbeddings.slice(4 * n, 5 * n);
-
-        results.forEach((p, i) => {
-          p.jobTitle_embedding     = jobEmb[i];
-          p.academic_embedding     = acadEmb[i];
-          p.professional_embedding = profEmb[i];
-          p.personal_embedding     = persEmb[i];
-          p.profile_embedding      = globEmb[i];
-        });
-
-        // Save embeddings CSV
-        saveFieldEmbeddingsToCSV(results);
-
-        res.json(results);
-      } catch (err) {
-        console.error('Embedding error:', err);
-        res.status(500).json({ error: 'Embedding failed' });
-      }
+      };
     });
+
+    saveCleanParticipantsCSV(results);
+
+    const jobTexts = results.map(p => p.jobTitleText);
+    const academicTexts = results.map(p => p.academicText);
+    const professionalTexts = results.map(p => p.professionalText);
+    const personalTexts = results.map(p => p.personalText);
+    const profileTexts = results.map(p => p.profileText);
+
+    const allTexts = [...jobTexts, ...academicTexts, ...professionalTexts, ...personalTexts, ...profileTexts];
+
+    const embeddings = await getEmbeddingsBatched(allTexts, 40);
+
+    const n = results.length;
+
+    results.forEach((p, i) => {
+      p.jobTitle_embedding = embeddings[i];
+      p.academic_embedding = embeddings[i + n];
+      p.professional_embedding = embeddings[i + 2*n];
+      p.personal_embedding = embeddings[i + 3*n];
+      p.profile_embedding = embeddings[i + 4*n];
+    });
+
+    saveFieldEmbeddingsToCSV(results);
+
+    res.json(results);
+
+  } catch (err) {
+    console.error('Cosmos FULL ERROR:', err.message);
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch from Cosmos' });
+  }
 });
 
-const { explainPair } = require('./llmExplanation');
+//const { explainPair } = require('./llmExplanation');
 const { getTopMatches } = require('./similarity');
 
-// Returns top-K most similar participants (NO explanation)
 app.get('/api/match/:id', async (req, res) => {
   const targetId = Number(req.params.id);
 
-  if (Number.isNaN(targetId)) {
-    return res.status(400).json({ error: 'Invalid participant ID' });
-  }
-
   try {
-    console.log('Requested match for ID:', targetId);
-
     const matches = await getTopMatches(targetId, 5);
-    console.log(
-  'Image for first match:',
-  matches[0]?.id,
-  imagesById.get(String(matches[0]?.id))
-);
 
-    const explainedMatches = await Promise.all(
+    const explained = await Promise.all(
       matches.map(async (m) => {
-        const exp = await explainPair(targetId, m.id);
+        //const exp = await explainPair(targetId, m.id);
+        const exp = {};
 
-                return {
+        return {
           id: m.id,
           name: m.name,
           score: m.score,
           breakdown: m.breakdown,
-
-          reason: exp.explanation?.ar || null,
-          reason_en: exp.explanation?.en || null,
-          reason_he: exp.explanation?.he || null,
-
-          // 🔹 חדש – שם מתורגם בנפרד
-          match_name: exp.match_name || null,
-
-
-          imageUrl: imagesById.get(String(m.id)) || null
+          reason: exp.explanation?.ar || null
         };
-
       })
     );
 
-    console.log(
-      'RETURNING:',
-      JSON.stringify(explainedMatches[0], null, 2)
-    );
-console.log('First explained match:', explainedMatches[0]);
+    res.json(explained);
 
-    res.json(explainedMatches);
   } catch (err) {
-    console.error('Match error:', err);
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
-});
-
-/* ---------- START SERVER ---------- */
-loadImagesFromParticipantsCsv().catch(err => {
-  console.error('❌ Failed to load images from participants.csv:', err);
 });
 
 app.listen(3000, () => {
